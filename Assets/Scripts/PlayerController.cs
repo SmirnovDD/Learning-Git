@@ -4,58 +4,70 @@ using UnityEngine;
 using UnityStandardAssets.CrossPlatformInput;
 
 public class PlayerController : MonoBehaviour {
-	public float moveSpeed = 10;
+	public float moveSpeed = 10; //скорость, на которую умножается вектор движения с джостика
+    public float maxSpeed = 10; //максимальная скорость движения rigidB
+    public float rotateSpeed = 2; //скорость, на которую умножается вектор с джостика поворота
+    public float rotationOffcet;
+    public float torqueForce;
 
 	private Rigidbody2D rigidB;
 	private Transform thisTransform;
 
-	// Use this for initialization
-	void Start ()
+    private readonly VectorPid angularVelocityController = new VectorPid(33, 0, 0.1f);
+    private readonly VectorPid headingController = new VectorPid(26, 0, 0.1f);
+
+    // Use this for initialization
+    void Start ()
 	{
 		rigidB = GetComponent<Rigidbody2D>();
 		thisTransform = transform;
 	}
 	
 	// Update is called once per frame
-	void Update () 
+	void FixedUpdate () 
 	{
-		//Movement(); //получаем инпут с джостика, приравниваем его к скорости движения и поворачиваем спрайт по направлению движения 
-		TEMPPCMOVEMENT();
+        Movement();
+        Rotation();
 	}
 
 	public void Movement()
 	{
-		float moveY = CrossPlatformInputManager.GetAxisRaw("Vertical");
-		float moveX = CrossPlatformInputManager.GetAxisRaw("Horizontal");
+        Vector2 moveVector = new Vector2(CrossPlatformInputManager.GetAxisRaw("Horizontal"), CrossPlatformInputManager.GetAxisRaw("Vertical")) * moveSpeed;
+        Vector3 localVelocity = thisTransform.InverseTransformDirection(rigidB.velocity);
+        Vector2 velocityChange = thisTransform.InverseTransformDirection(moveVector.x, moveVector.y, 0) - localVelocity;
 
-		Vector3 moveVector = new Vector3(moveX, moveY, 0);
-		moveVector = moveVector.normalized;
+        velocityChange = Vector2.ClampMagnitude(velocityChange, maxSpeed);
+        velocityChange = thisTransform.TransformDirection(velocityChange);
 
-		rigidB.velocity = moveVector * moveSpeed;
-
-		if (rigidB.velocity != Vector2.zero)
-		{
-			float angle = Mathf.Atan2(rigidB.velocity.y, rigidB.velocity.x) * Mathf.Rad2Deg;
-			thisTransform.rotation = Quaternion.AngleAxis(angle - 90, Vector3.forward);
-		}
+        rigidB.AddForce(velocityChange, ForceMode2D.Impulse);
 	}
 
-	public void MeleeAttack()
-	{
+    public void Rotation()
+    {
+        Vector3 rotateVector = new Vector3(CrossPlatformInputManager.GetAxisRaw("RotateHorizontal"), CrossPlatformInputManager.GetAxisRaw("RotateVertical"), 0);
 
-	}
+        //if(rigidB.rotation < (Mathf.Atan2(rotateVector.y, rotateVector.x) * Mathf.Rad2Deg - 90) - rotationOffcet)
+        //{
+        //    rigidB.AddTorque(torqueForce);
+        //}
 
-	public void TEMPPCMOVEMENT()
-	{
-		float moveY = Input.GetAxisRaw("Vertical");
-		float moveX = Input.GetAxisRaw("Horizontal");
+        var angularVelocityError = rigidB.angularVelocity * -1;
 
-		Vector3 moveVector = new Vector3(moveX, moveY, 0);
-		moveVector = moveVector.normalized;
+        var angularVelocityCorrection = angularVelocityController.Update(angularVelocityError, Time.deltaTime);
 
-		rigidB.velocity = moveVector * moveSpeed;
+        rigidB.AddTorque(angularVelocityCorrection);
 
-		Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-		thisTransform.rotation = Quaternion.LookRotation(Vector3.forward, mousePos - transform.position);
-	}
+        var desiredHeading = rotateVector;
+
+        Debug.DrawRay(transform.position, desiredHeading, Color.magenta);
+
+        var currentHeading = transform.up;
+        Debug.DrawRay(transform.position, currentHeading * 15, Color.blue);
+
+        var headingError = Vector3.Cross(currentHeading, desiredHeading);
+        var headingCorrection = headingController.Update(headingError.z, Time.deltaTime);
+
+        rigidB.AddTorque(headingCorrection);
+
+    }
 }
