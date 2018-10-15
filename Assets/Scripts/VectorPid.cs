@@ -1,5 +1,4 @@
-﻿using UnityEngine;
-
+﻿
 public class VectorPid
 {
     public float pFactor, iFactor, dFactor;
